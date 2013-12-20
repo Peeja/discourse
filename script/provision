@@ -1,0 +1,33 @@
+#!/bin/sh
+
+# Assumes DigitalOcean's Dokku image.
+
+ssh -T root@"$1" <<-'CMDS'
+# Get plietar's addons branch
+cd ~/dokku
+git remote add plietar https://github.com/plietar/dokku/
+git fetch plietar
+git checkout plietar/addons
+make install
+
+# Install addons.
+cd ~
+git clone https://github.com/plietar/dokku-addons
+cd dokku-addons
+make install
+
+# Patch postgresql addon to enable hstore and pg_trgm.
+# Users can't CREATE EXTENSION themselves because only the superuser can do that.
+# Heroku has a mysterious way around this. This is a hack until we can replicate that.
+# http://stackoverflow.com/questions/20723100/why-can-only-a-superuser-create-extension-hstore-but-not-on-heroku
+sed -ised -e '/^EOF$/i\\connect "$ID";\' -e 'CREATE EXTENSION hstore;\' -e 'CREATE EXTENSION pg_trgm;\' /var/lib/dokku/addons/postgresql/provision
+
+# Enable addons.
+dokku addons:enable postgresql
+dokku addons:enable redis
+
+# Install plugins.
+cd /var/lib/dokku/plugins
+git clone https://github.com/musicglue/dokku-user-env-compile
+dokku plugins-install
+CMDS
